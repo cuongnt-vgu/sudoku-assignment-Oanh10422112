@@ -1,682 +1,120 @@
 #include "hidden_triples.h"
 #include <stdlib.h>
+#include <stdio.h>
+
+int check_cell_in_hidden_triples(int triples[3], Cell* p_cell)
+{
+    for (int i = 0; i < 3; i++)
+    {   
+        if (is_candidate(p_cell, triples[i])) return 1;
+    }
+    return 0;
+}
+
+int check_hidden_triples(Cell **p_cells, int possible_triples[], int *indices)
+{
+    int cell_counter = 0;
+    for (int i = 0; i < BOARD_SIZE; i++)
+    {
+        if (p_cells[i]->num_candidates == 1) continue;
+        else if (check_cell_in_hidden_triples(possible_triples, p_cells[i])) indices[cell_counter++] = i;
+    }
+    if (cell_counter == 3) return 1;
+    return 0;
+}
+
+void find_hidden_triples(Cell **p_cells, HiddenTriples *p_hidden_triples, int *p_counter, int unit)
+{
+    int candidate_counter[BOARD_SIZE];
+    for (int i = 0; i < BOARD_SIZE; i++)
+    {
+        candidate_counter[i] = 0;
+    }
+    for (int i = 0; i < BOARD_SIZE; i++)
+    {
+        int* candidates = get_candidates(p_cells[i]);
+        for (int j = 0; j < p_cells[i]->num_candidates; j++)
+        {
+            candidate_counter[candidates[j]-1] += 1;
+        }
+        free(candidates);
+    }
+
+    int possible_triples[BOARD_SIZE];
+    int possible_triples_count = 0;
+    for (int i = 0; i < BOARD_SIZE; i++)
+    {
+        if (candidate_counter[i] == 2 || candidate_counter[i] == 3)
+        {
+            possible_triples[possible_triples_count++] = i+1;
+        }
+    }
+
+    if (possible_triples_count < 3) return;
+
+    for (int i = 0; i < possible_triples_count - 2; i++)
+    {
+        for (int j = i+1; j < possible_triples_count - 1; j++)
+        {
+            for (int k = j+1; k < possible_triples_count; k++)
+            {
+                int values[3] = {possible_triples[i], possible_triples[j], possible_triples[k]};
+                int indices[BOARD_SIZE];
+                if (check_hidden_triples(p_cells, values, indices))
+                {
+                    if (unit == 1)
+                    {
+                        if ((indices[0] == 0 || indices[0] == 3 || indices[0] == 6) && indices[1] == indices[0]+1 && indices[2] == indices[0]+2) continue;
+                        else if ((indices[0] >= 0 && indices[0] <= 2) && indices[1] == indices[0]+3 && indices[2] == indices[0]+6) continue;
+                    }
+                    p_hidden_triples[(*p_counter)++] = (HiddenTriples){p_cells, {indices[0], indices[1], indices[2]}, {possible_triples[i], possible_triples[j], possible_triples[k]}};
+                }
+            }
+        }
+    }
+}
 
 int hidden_triples(SudokuBoard *p_board)
 {
-    int hidden_triples_cases = 0;
-    HiddenTriple *triples = malloc(0);
+    int counter = 0;
 
-    // row iteration
-    for (int i = 0; i < BOARD_SIZE; i++) // iterate over every row
+    HiddenTriples p_hidden_triples[BOARD_SIZE * BOARD_SIZE];
+
+    for (int i = 0; i < BOARD_SIZE; i++)
     {
-        for (int j = 0; j < BOARD_SIZE; j++) // iterate over every number 1-9
+        find_hidden_triples(p_board->p_rows[i], p_hidden_triples, &counter, 0);
+        find_hidden_triples(p_board->p_cols[i], p_hidden_triples, &counter, 0);
+        find_hidden_triples(p_board->p_boxes[i], p_hidden_triples, &counter, 1);
+    }
+    int offset = counter;
+    for (int i = 0; i < counter; i++)
+    {
+        int change = 0;
+        Cell** p_cells = p_hidden_triples[i].p_cells;
+        int triples_values[3];
+        for (int j = 0; j < 3; j++)
         {
-            int candidate_count = 0; // in that row, how many can be j?
-            int index_1 = 0; // index of hidden single cell in the row
-            int index_2 = 0;
-            int index_3 = 0;
-            int value_1 = 0; // index of hidden single cell in the row
-            int value_2 = 0;
-            int value_3 = 0;
-            bool r_invalid = true;
-            for (int k = 0; k < BOARD_SIZE; k++) // iterate over every cell in the row
+            triples_values[j] = p_hidden_triples[i].values[j];
+        }
+        for (int j = 0; j < BOARD_SIZE; j++)
+        {
+            if (check_cell_in_hidden_triples(triples_values, p_cells[j]))
             {
-                if (p_board->p_rows[i][k]->num_candidates == 1) continue;
-                if (p_board->p_rows[i][k]->candidates[j] == 1)
+                for (int k = 1; k < BOARD_SIZE+1; k++)
                 {
-                    candidate_count++;
-                    if (index_1 && index_2)
+                    if (k != triples_values[0] && k != triples_values[1] && k != triples_values[2])
                     {
-                        index_3 = k;
-                    }
-                    else if (index_1)
-                    {
-                        index_2 = k;
-                    }
-                    else
-                    {
-                        index_1 = k;
-                    }
-                    value_1 = j + 1;
-                }
-            }
-            if (candidate_count == 3) // only 1 cell can be j
-            {
-                for (int l = 0; l < BOARD_SIZE; l++)
-                {
-                    int candi = 0;
-                    value_2 = l + 1;
-                    if (p_board->p_rows[i][index_1]->candidates[l] == 1 && l != value_1 - 1)
-                    {
-                        candi++;
-                    }
-                    if (p_board->p_rows[i][index_1]->candidates[l] == 1 && l != value_1 - 1)
-                    {
-                        candi++;
-                    }
-                    if (p_board->p_rows[i][index_1]->candidates[l] == 1 && l != value_1 - 1)
-                    {
-                        candi++;
-                    }
-                    if (candi == 1)
-                    {
-                        int avail = 0;
-                        for (int m = 0; m < BOARD_SIZE; m++)
+
+                        if (is_candidate(p_cells[j], k))
                         {
-                            if ((p_board->p_rows[i][m]->candidates[value_2 - 1] == 1) && (m != index_1 && m != index_2 && m != index_3))
-                            {
-                                avail++;
-                            }
-                        }
-                        if (avail == 0)
-                        {
-                            int candi_1 = 0;
-                            for (int n = 0; n < BOARD_SIZE; n++)
-                            {
-                                value_3 = n + 1;
-                                if (p_board->p_rows[i][index_1]->candidates[n] == 1 && l != value_1 - 1 && l != value_2 - 1)
-                                {
-                                    candi_1++;
-                                }
-                                if (p_board->p_rows[i][index_1]->candidates[n] == 1 && l != value_1 - 1 && l != value_2 - 1)
-                                {
-                                    candi_1++;
-                                }
-                                if (p_board->p_rows[i][index_1]->candidates[n] == 1 && l != value_1 - 1 && l != value_2 - 1)
-                                {
-                                    candi_1++;
-                                }
-                                if (candi_1 == 3)
-                                {
-                                    int avail_1 = 0;
-                                    for (int o = 0; o < BOARD_SIZE; o++)
-                                    {
-                                        if ((p_board->p_rows[i][o]->candidates[value_3 - 1] == 1) && (o != index_1 && o != index_2 && o != index_3))
-                                        {
-                                            avail_1++;
-                                        }
-                                    }
-                                    if (avail_1 == 0)
-                                    {
-                                        r_invalid = false;
-                                    }
-                                }
-                            }
-                        }
+                            unset_candidate(p_cells[j], k);
+                            change = 1;
+                        }                     
                     }
-                    if (candi == 2)
-                    {
-                        int avail = 0;
-                        for (int m = 0; m < BOARD_SIZE; m++)
-                        {
-                            if ((p_board->p_rows[i][m]->candidates[value_2 - 1] == 1) && (m != index_1 && m != index_2  && m != index_3))
-                            {
-                                avail++;
-                            }
-                        }
-                        if (avail == 0)
-                        {
-                            int candi_1 = 0;
-                            for (int n = 0; n < BOARD_SIZE; n++)
-                            {
-                                value_3 = n + 1;
-                                if (p_board->p_rows[i][index_1]->candidates[n] == 1 && l != value_1 - 1 && l != value_2 - 1)
-                                {
-                                    candi_1++;
-                                }
-                                if (p_board->p_rows[i][index_1]->candidates[n] == 1 && l != value_1 - 1 && l != value_2 - 1)
-                                {
-                                    candi_1++;
-                                }
-                                if (p_board->p_rows[i][index_1]->candidates[n] == 1 && l != value_1 - 1 && l != value_2 - 1)
-                                {
-                                    candi_1++;
-                                }
-                                if (candi_1 >= 2)
-                                {
-                                    int avail_1 = 0;
-                                    for (int o = 0; o < BOARD_SIZE; o++)
-                                    {
-                                        if ((p_board->p_rows[i][o]->candidates[value_3 - 1] == 1) && (o != index_1 && o != index_2  && o != index_3))
-                                        {
-                                            avail_1++;
-                                        }
-                                    }
-                                    if (avail_1 == 0)
-                                    {
-                                        r_invalid = false;
-                                    }
-                                }
-                            }
-                        }
-                    }
-                    if (candi == 3)
-                    {
-                        int avail = 0;
-                        for (int m = 0; m < BOARD_SIZE; m++)
-                        {
-                            if ((p_board->p_rows[i][m]->candidates[value_2 - 1] == 1) && (m != index_1 && m != 2 && m != index_3))
-                            {
-                                avail++;
-                            }
-                        }
-                        if (avail == 0)
-                        {
-                            int candi_1 = 0;
-                            for (int n = 0; n < BOARD_SIZE; n++)
-                            {
-                                value_3 = n + 1;
-                                if (p_board->p_rows[i][index_1]->candidates[n] == 1 && l != value_1 - 1 && l != value_2 - 1)
-                                {
-                                    candi_1++;
-                                }
-                                if (p_board->p_rows[i][index_1]->candidates[n] == 1 && l != value_1 - 1 && l != value_2 - 1)
-                                {
-                                    candi_1++;
-                                }
-                                if (p_board->p_rows[i][index_1]->candidates[n] == 1 && l != value_1 - 1 && l != value_2 - 1)
-                                {
-                                    candi_1++;
-                                }
-                                if (candi_1 >= 1)
-                                {
-                                    int avail_1 = 0;
-                                    for (int o = 0; o < BOARD_SIZE; o++)
-                                    {
-                                        if ((p_board->p_rows[i][o]->candidates[value_3 - 1] == 1) && (o != index_1 && o != index_2 && o != index_3))
-                                        {
-                                            avail_1++;
-                                        }
-                                    }
-                                    if (avail_1 == 0)
-                                    {
-                                        r_invalid = false;
-                                    }
-                                }
-                            }
-                        }
-                    }
-                }
-            }
-            if (!r_invalid) // only 1 cell can be j
-            {
-                HiddenTriple temp_triple;
-                temp_triple.p_cells[0] = p_board->p_boxes[i][index_1];
-                temp_triple.p_cells[1] = p_board->p_boxes[i][index_2];
-                temp_triple.p_cells[2] = p_board->p_boxes[i][index_3];
-                temp_triple.values[0] = value_1;
-                temp_triple.values[1] = value_2;
-                temp_triple.values[2] = value_3;
-                int already_checked = 0;
-                for (int l = 0; l < hidden_triples_cases; l++)
-                    if ((triples[l].p_cells[0] == temp_triple.p_cells[0] && triples[l].p_cells[1] == temp_triple.p_cells[1] && triples[l].p_cells[2] == temp_triple.p_cells[2]) ||
-                        (triples[l].p_cells[0] == temp_triple.p_cells[1] && triples[l].p_cells[1] == temp_triple.p_cells[2] && triples[l].p_cells[2] == temp_triple.p_cells[0]) ||
-                        (triples[l].p_cells[0] == temp_triple.p_cells[2] && triples[l].p_cells[1] == temp_triple.p_cells[0] && triples[l].p_cells[2] == temp_triple.p_cells[1]))
-                        already_checked = 1;
-                if (!already_checked)
-                {
-                    hidden_triples_cases++;
-                    triples = realloc(triples, hidden_triples_cases * sizeof(HiddenTriple));
-                    triples[hidden_triples_cases - 1] = temp_triple;
                 }
             }
         }
+        if (change == 1) offset--;
     }
-
-    // column iteration
-    for (int i = 0; i < BOARD_SIZE; i++) // iterate over every column
-    {
-        for (int j = 0; j < BOARD_SIZE; j++) // iterate over every number 1-9
-        {
-            int candidate_count = 0; // in that row, how many can be j?
-            int index_1 = 0; // index of hidden single cell in the row
-            int index_2 = 0;
-            int index_3 = 0;
-            int value_1 = 0; // index of hidden single cell in the row
-            int value_2 = 0;
-            int value_3 = 0;
-            bool c_invalid = true;
-            for (int k = 0; k < BOARD_SIZE; k++) // iterate over every cell in the row
-            {
-                if (p_board->p_cols[i][k]->num_candidates == 1) continue;
-                if (p_board->p_cols[i][k]->candidates[j] == 1)
-                {
-                    candidate_count++;
-                    if (index_1 && index_2)
-                    {
-                        index_3 = k;
-                    }
-                    else if (index_1)
-                    {
-                        index_2 = k;
-                    }
-                    else
-                    {
-                        index_1 = k;
-                    }
-                    value_1 = j + 1;
-                }
-            }
-            if (candidate_count == 3) // only 1 cell can be j
-            {
-                for (int l = 0; l < BOARD_SIZE; l++)
-                {
-                    int candi = 0;
-                    value_2 = l;
-                    if (p_board->p_cols[i][index_1]->candidates[l] == 1 && l != value_1 - 1)
-                    {
-                        candi++;
-                    }
-                    if (p_board->p_cols[i][index_1]->candidates[l] == 1 && l != value_1 - 1)
-                    {
-                        candi++;
-                    }
-                    if (p_board->p_cols[i][index_1]->candidates[l] == 1 && l != value_1 - 1)
-                    {
-                        candi++;
-                    }
-                    if (candi == 1)
-                    {
-                        int avail = 0;
-                        for (int m = 0; m < BOARD_SIZE; m++)
-                        {
-                            if ((p_board->p_cols[i][m]->candidates[value_2 - 1] == 1) && (m != index_1 && m != index_2 && m != index_3))
-                            {
-                                avail++;
-                            }
-                        }
-                        if (avail == 0)
-                        {
-                            int candi_1 = 0;
-                            for (int n = 0; n < BOARD_SIZE; n++)
-                            {
-                                value_3 = n;
-                                if (p_board->p_cols[i][index_1]->candidates[n] == 1 && l != value_1 - 1 && l != value_2 - 1)
-                                {
-                                    candi_1++;
-                                }
-                                if (p_board->p_cols[i][index_1]->candidates[n] == 1 && l != value_1 - 1 && l != value_2 - 1)
-                                {
-                                    candi_1++;
-                                }
-                                if (p_board->p_cols[i][index_1]->candidates[n] == 1 && l != value_1 - 1 && l != value_2 - 1)
-                                {
-                                    candi_1++;
-                                }
-                                if (candi_1 == 3)
-                                {
-                                    int avail_1 = 0;
-                                    for (int o = 0; o < BOARD_SIZE; o++)
-                                    {
-                                        if ((p_board->p_cols[i][o]->candidates[value_3 - 1] == 1) && (o != index_1 && o != index_2 && o != index_3))
-                                        {
-                                            avail_1++;
-                                        }
-                                    }
-                                    if (avail_1 == 0)
-                                    {
-                                        c_invalid = false;
-                                    }
-                                }
-                            }
-                        }
-                    }
-                    if (candi == 2)
-                    {
-                        int avail = 0;
-                        for (int m = 0; m < BOARD_SIZE; m++)
-                        {
-                            if ((p_board->p_cols[i][m]->candidates[value_2 - 1] == 1) && (m != index_1 && m != index_2 && m != index_3))
-                            {
-                                avail++;
-                            }
-                        }
-                        if (avail == 0)
-                        {
-                            int candi_1 = 0;
-                            for (int n = 0; n < BOARD_SIZE; n++)
-                            {
-                                value_3 = n;
-                                if (p_board->p_cols[i][index_1]->candidates[n] == 1 && l != value_1 - 1 && l != value_2 - 1)
-                                {
-                                    candi_1++;
-                                }
-                                if (p_board->p_cols[i][index_1]->candidates[n] == 1 && l != value_1 - 1 && l != value_2 - 1)
-                                {
-                                    candi_1++;
-                                }
-                                if (p_board->p_cols[i][index_1]->candidates[n] == 1 && l != value_1 - 1 && l != value_2 - 1)
-                                {
-                                    candi_1++;
-                                }
-                                if (candi_1 >= 2)
-                                {
-                                    int avail_1 = 0;
-                                    for (int o = 0; o < BOARD_SIZE; o++)
-                                    {
-                                        if ((p_board->p_cols[i][o]->candidates[value_3 - 1] == 1) && (o != index_1 && o != index_2 && o != index_3))
-                                        {
-                                            avail_1++;
-                                        }
-                                    }
-                                    if (avail_1 == 0)
-                                    {
-                                        c_invalid = false;
-                                    }
-                                }
-                            }
-                        }
-                    }
-                    if (candi == 3)
-                    {
-                        int avail = 0;
-                        for (int m = 0; m < BOARD_SIZE; m++)
-                        {
-                            if ((p_board->p_cols[i][m]->candidates[value_2 - 1] == 1) && (m != index_1 && m != 2 && m != index_3))
-                            {
-                                avail++;
-                            }
-                        }
-                        if (avail == 0)
-                        {
-                            int candi_1 = 0;
-                            for (int n = 0; n < BOARD_SIZE; n++)
-                            {
-                                value_3 = n;
-                                if (p_board->p_cols[i][index_1]->candidates[n] == 1 && l != value_1 - 1 && l != value_2 - 1)
-                                {
-                                    candi_1++;
-                                }
-                                if (p_board->p_cols[i][index_1]->candidates[n] == 1 && l != value_1 - 1 && l != value_2 - 1)
-                                {
-                                    candi_1++;
-                                }
-                                if (p_board->p_cols[i][index_1]->candidates[n] == 1 && l != value_1 - 1 && l != value_2 - 1)
-                                {
-                                    candi_1++;
-                                }
-                                if (candi_1 >= 1)
-                                {
-                                    int avail_1 = 0;
-                                    for (int o = 0; o < BOARD_SIZE; o++)
-                                    {
-                                        if ((p_board->p_cols[i][o]->candidates[value_3 - 1] == 1) && (o != index_1 && o != index_2 && o != index_3))
-                                        {
-                                            avail_1++;
-                                        }
-                                    }
-                                    if (avail_1 == 0)
-                                    {
-                                        c_invalid = false;
-                                    }
-                                }
-                            }
-                        }
-                    }
-                }
-            }
-            if (!c_invalid) // only 1 cell can be j
-            {
-                HiddenTriple temp_triple;
-                temp_triple.p_cells[0] = p_board->p_boxes[i][index_1];
-                temp_triple.p_cells[1] = p_board->p_boxes[i][index_2];
-                temp_triple.p_cells[2] = p_board->p_boxes[i][index_3];
-                temp_triple.values[0] = value_1;
-                temp_triple.values[1] = value_2;
-                temp_triple.values[2] = value_3;
-                int already_checked = 0;
-                for (int l = 0; l < hidden_triples_cases; l++)
-                    if ((triples[l].p_cells[0] == temp_triple.p_cells[0] && triples[l].p_cells[1] == temp_triple.p_cells[1] && triples[l].p_cells[2] == temp_triple.p_cells[2]) ||
-                        (triples[l].p_cells[0] == temp_triple.p_cells[1] && triples[l].p_cells[1] == temp_triple.p_cells[2] && triples[l].p_cells[2] == temp_triple.p_cells[0]) ||
-                        (triples[l].p_cells[0] == temp_triple.p_cells[2] && triples[l].p_cells[1] == temp_triple.p_cells[0] && triples[l].p_cells[2] == temp_triple.p_cells[1]))
-                        already_checked = 1;
-                if (!already_checked)
-                {
-                    hidden_triples_cases++;
-                    triples = realloc(triples, hidden_triples_cases * sizeof(HiddenTriple));
-                    triples[hidden_triples_cases - 1] = temp_triple;
-                }
-            }
-        }
-    }
-
-    // box iteration
-    for (int i = 0; i < BOARD_SIZE; i++) // iterate over every box
-    {
-        for (int j = 0; j < BOARD_SIZE; j++) // iterate over every number 1-9
-        {
-            int candidate_count = 0; // in that row, how many can be j?
-            int index_1 = 0; // index of hidden single cell in the row
-            int index_2 = 0;
-            int index_3 = 0;
-            int value_1 = 0; // index of hidden single cell in the row
-            int value_2 = 0;
-            int value_3 = 0;
-            bool b_invalid = true;
-            for (int k = 0; k < BOARD_SIZE; k++) // iterate over every cell in the row
-            {
-                if (p_board->p_boxes[i][k]->num_candidates == 1) continue;
-                if (p_board->p_boxes[i][k]->candidates[j] == 1)
-                {
-                    candidate_count++;
-                    if (index_1 && index_2)
-                    {
-                        index_3 = k;
-                    }
-                    else if (index_1)
-                    {
-                        index_2 = k;
-                    }
-                    else
-                    {
-                        index_1 = k;
-                    }
-                    value_1 = j + 1;
-                }
-            }
-            if (candidate_count == 3) // only 1 cell can be j
-            {
-                for (int l = 0; l < BOARD_SIZE; l++)
-                {
-                    int candi = 0;
-                    value_2 = l;
-                    if (p_board->p_boxes[i][index_1]->candidates[l] == 1 && l != value_1 - 1)
-                    {
-                        candi++;
-                    }
-                    if (p_board->p_boxes[i][index_1]->candidates[l] == 1 && l != value_1 - 1)
-                    {
-                        candi++;
-                    }
-                    if (p_board->p_boxes[i][index_1]->candidates[l] == 1 && l != value_1 - 1)
-                    {
-                        candi++;
-                    }
-                    if (candi == 1)
-                    {
-                        int avail = 0;
-                        for (int m = 0; m < BOARD_SIZE; m++)
-                        {
-                            if ((p_board->p_boxes[i][m]->candidates[value_2 - 1] == 1) && (m != index_1 && m != index_2 && m != index_3))
-                            {
-                                avail++;
-                            }
-                        }
-                        if (avail == 0)
-                        {
-                            int candi_1 = 0;
-                            for (int n = 0; n < BOARD_SIZE; n++)
-                            {
-                                value_3 = n;
-                                if (p_board->p_boxes[i][index_1]->candidates[n] == 1 && l != value_1 - 1 && l != value_2 - 1)
-                                {
-                                    candi_1++;
-                                }
-                                if (p_board->p_boxes[i][index_1]->candidates[n] == 1 && l != value_1 - 1 && l != value_2 - 1)
-                                {
-                                    candi_1++;
-                                }
-                                if (p_board->p_boxes[i][index_1]->candidates[n] == 1 && l != value_1 - 1 && l != value_2 - 1)
-                                {
-                                    candi_1++;
-                                }
-                                if (candi_1 == 3)
-                                {
-                                    int avail_1 = 0;
-                                    for (int o = 0; o < BOARD_SIZE; o++)
-                                    {
-                                        if ((p_board->p_boxes[i][o]->candidates[value_3 - 1] == 1) && (o != index_1 && o != index_2 && o != index_3))
-                                        {
-                                            avail_1++;
-                                        }
-                                    }
-                                    if (avail_1 == 0)
-                                    {
-                                        b_invalid = false;
-                                    }
-                                }
-                            }
-                        }
-                    }
-                    if (candi == 2)
-                    {
-                        int avail = 0;
-                        for (int m = 0; m < BOARD_SIZE; m++)
-                        {
-                            if ((p_board->p_boxes[i][m]->candidates[value_2 - 1] == 1) && (m != index_1 && m != index_2 && m != index_3))
-                            {
-                                avail++;
-                            }
-                        }
-                        if (avail == 0)
-                        {
-                            int candi_1 = 0;
-                            for (int n = 0; n < BOARD_SIZE; n++)
-                            {
-                                value_3 = n;
-                                if (p_board->p_boxes[i][index_1]->candidates[n] == 1 && l != value_1 - 1 && l != value_2 - 1)
-                                {
-                                    candi_1++;
-                                }
-                                if (p_board->p_boxes[i][index_1]->candidates[n] == 1 && l != value_1 - 1 && l != value_2 - 1)
-                                {
-                                    candi_1++;
-                                }
-                                if (p_board->p_boxes[i][index_1]->candidates[n] == 1 && l != value_1 - 1 && l != value_2 - 1)
-                                {
-                                    candi_1++;
-                                }
-                                if (candi_1 >= 2)
-                                {
-                                    int avail_1 = 0;
-                                    for (int o = 0; o < BOARD_SIZE; o++)
-                                    {
-                                        if ((p_board->p_boxes[i][o]->candidates[value_3 - 1] == 1) && (o != index_1 && o != index_2 && o != index_3))
-                                        {
-                                            avail_1++;
-                                        }
-                                    }
-                                    if (avail_1 == 0)
-                                    {
-                                        b_invalid = false;
-                                    }
-                                }
-                            }
-                        }
-                    }
-                    if (candi == 3)
-                    {
-                        int avail = 0;
-                        for (int m = 0; m < BOARD_SIZE; m++)
-                        {
-                            if ((p_board->p_boxes[i][m]->candidates[value_2 - 1] == 1) && (m != index_1 && m != index_2 && m != index_3))
-                            {
-                                avail++;
-                            }
-                        }
-                        if (avail == 0)
-                        {
-                            int candi_1 = 0;
-                            for (int n = 0; n < BOARD_SIZE; n++)
-                            {
-                                value_3 = n;
-                                if (p_board->p_boxes[i][index_1]->candidates[n] == 1 && l != value_1 - 1 && l != value_2 - 1)
-                                {
-                                    candi_1++;
-                                }
-                                if (p_board->p_boxes[i][index_1]->candidates[n] == 1 && l != value_1 - 1 && l != value_2 - 1)
-                                {
-                                    candi_1++;
-                                }
-                                if (p_board->p_boxes[i][index_1]->candidates[n] == 1 && l != value_1 - 1 && l != value_2 - 1)
-                                {
-                                    candi_1++;
-                                }
-                                if (candi_1 >= 1)
-                                {
-                                    int avail_1 = 0;
-                                    for (int o = 0; o < BOARD_SIZE; o++)
-                                    {
-                                        if ((p_board->p_boxes[i][o]->candidates[value_3 - 1] == 1) && (o != index_1 && o != index_2 && o != index_3))
-                                        {
-                                            avail_1++;
-                                        }
-                                    }
-                                    if (avail_1 == 0)
-                                    {
-                                        b_invalid = false;
-                                    }
-                                }
-                            }
-                        }
-                    }
-                }
-            }
-            if (!b_invalid) // only 1 cell can be j
-            {
-                HiddenTriple temp_triple;
-                temp_triple.p_cells[0] = p_board->p_boxes[i][index_1];
-                temp_triple.p_cells[1] = p_board->p_boxes[i][index_2];
-                temp_triple.p_cells[2] = p_board->p_boxes[i][index_3];
-                temp_triple.values[0] = value_1;
-                temp_triple.values[1] = value_2;
-                temp_triple.values[2] = value_3;
-                int already_checked = 0;
-                for (int l = 0; l < hidden_triples_cases; l++)
-                    if ((triples[l].p_cells[0] == temp_triple.p_cells[0] && triples[l].p_cells[1] == temp_triple.p_cells[1] && triples[l].p_cells[2] == temp_triple.p_cells[2]) ||
-                        (triples[l].p_cells[0] == temp_triple.p_cells[1] && triples[l].p_cells[1] == temp_triple.p_cells[2] && triples[l].p_cells[2] == temp_triple.p_cells[0]) ||
-                        (triples[l].p_cells[0] == temp_triple.p_cells[2] && triples[l].p_cells[1] == temp_triple.p_cells[0] && triples[l].p_cells[2] == temp_triple.p_cells[1]))
-                        already_checked = 1;
-                if (!already_checked)
-                {
-                    hidden_triples_cases++;
-                    triples = realloc(triples, hidden_triples_cases * sizeof(HiddenTriple));
-                    triples[hidden_triples_cases - 1] = temp_triple;
-                }
-            }
-        }
-    }
-
-    //int *candidates = malloc(4);
-    int *candidates = malloc(3 * sizeof(int));
-    for (int i = 0; i < hidden_triples_cases; i++)
-    {
-        // Make sure to allocate enough memory for the candidates array
-        ///int *candidates = malloc(3 * sizeof(int));
-
-        candidates[0] = triples[i].values[0];
-        candidates[1] = triples[i].values[1];
-        candidates[2] = triples[i].values[2];
-        
-        // Call set_candidates on each cell in the pair with both candidates
-        set_candidates(triples[i].p_cells[0], candidates, 3);
-        set_candidates(triples[i].p_cells[1], candidates, 3);
-        set_candidates(triples[i].p_cells[2], candidates, 3);
-
-        // Free the memory allocated for candidates
-        //free(candidates);
-    }
-    free(triples);
-    free(candidates);
-    return hidden_triples_cases; // returns total cells solved by hidden triples
+    return counter - offset;
 }
